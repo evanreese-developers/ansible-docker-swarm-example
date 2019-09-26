@@ -1,0 +1,39 @@
+---
+- hosts: all
+  become: true
+  vars:
+    - swarm_address: DockerHost #You must configure the ip of the host in /etc/hosts prior to using this file
+    - db_image: mydb
+    - app_image: myapp
+    - webserver_image: mywebserver
+    - db_service: db_server
+    - app_service: app_server
+    - webserver_service: webserver
+    - db_data_vol: /opt/mongo/db
+    - db_configdb_vol: /opt/mongo/configdb
+    - app_replicas: 3
+    - webserver_replicas: 5
+    - webserver_port: 8080
+    - network_name: blog_network
+  tasks: 
+    - name: Install prerequisites
+      apt: 
+        name: ['python-pip', 'python-apt'] 
+        state: present
+    - name: Install docker-py
+      pip:
+        name: docker-py
+        state: present
+    - name: Install Docker apy Repository
+      apt_key:
+        url: "https://download.docker.com/linux/ubuntu/gpg"
+        state: present
+    - name: Install Docker apt Repository
+      apt_repository:
+        repo: "deb [arch=amd64] https:download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+    - name: Install Docker-ce
+      apt: 
+        name: docker-ce
+        update_cache: yes
+        state: present
