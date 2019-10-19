@@ -3,24 +3,28 @@
   become: true
   vars:
     - swarm_address: DockerHost #You must configure the ip of the host in /etc/hosts prior to using this file
+    - db_sync_path: ../parent-tracking-database
     - db_image: mydb
-    - app_image: myapp
-    - webserver_image: mywebserver
     - db_service: db_server
+    - app_sync_path: ../parent-tracking-application
+    - app_image: myapp
     - app_service: app_server
-    - webserver_service: webserver
     - db_data_vol: /opt/mongo/db
     - db_configdb_vol: /opt/mongo/configdb
+    - webserver_sync_path: ../nginx-Docker-Image
+    - webserver_image: mywebserver
+    - webserver_service: webserver
     - app_replicas: 3
     - webserver_replicas: 5
-    - webserver_port: 8080
+    - webserver_port_external: 8080
+    - webserver_port_internal: 80
     - network_name: blog_network
   tasks: 
-    - name: Install prerequisites
+    - name: Install Prerequisites
       apt: 
-        name: ['python-pip', 'python-apt'] 
+        name: ['python-apt', 'python-pip', 'python3-pip', 'git', 'ssh'] 
         state: present
-    - name: Install docker
+    - name: Install Docker
       pip:
         name: docker
         state: present
@@ -37,17 +41,30 @@
         name: docker-ce
         update_cache: yes
         state: present
-    - name: Upload the DB image
+    - name: Install Node apt Repository Key
+      apt_key:
+        url: "https://deb.nodesource.com/gpgkey/nodesource.gpg.key"
+        state: present
+    - name: Install Node apt Repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://deb.nodesource.com/node_12.x bionic main"  
+        state: present
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        update_cache: yes
+        state: present
+    - name: Upload the DB Docker Image
       synchronize:
-        src: ../parent-tracking-database
+        src: "{{db_sync_path}}"
         dest: /opt/mydb
-    - name: Upload the app image
+    - name: Upload the Application Docker Image
       synchronize:
-        src: ../parent-tracking-application
+        src: "{{app_sync_path}}"
         dest: /opt/myapp
-    - name: Upload the webserver image
+    - name: Upload the Webserver Docker Image
       synchronize:
-        src: ../parent-tracking-web
+        src: "{{webserver_sync_path}}"
         dest: /opt/mywebserver
     - name: Build the DB image
       docker_image:
@@ -60,7 +77,7 @@
     - name: Build the webserver image
       docker_image:
         name: "{{webserver_image}}"
-        path: /opt/mywebserver/parent-tracking-web
+        path: /opt/mywebserver
     - name: Create the Docker Swarm
       docker_swarm:
         state: present
@@ -106,5 +123,12 @@
         restart_config:
           condition: on-failure
         publish:
-          - published_port: "{{webserver_port}}"
-            target_port: 80
+          - published_port: "{{webserver_port_external}}"
+            target_port: "{{webserver_port_internal}}"
+        mounts:
+          - type: bind
+            source: /home/vagrant/web-dev-course/etc/nginx/conf.d
+            target: /etc/nginx/conf.d
+          - type: bind
+            source: /home/vagrant/web-dev-course/usr/share/www/html
+            target: /usr/share/www/html
