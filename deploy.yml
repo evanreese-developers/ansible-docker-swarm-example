@@ -1,0 +1,135 @@
+---
+- hosts: all
+  remote_user: vagrant
+  become: true
+  vars:
+    - swarm_address: DockerHost #You must configure the ip of the host in /etc/hosts prior to using this file
+    - db_sync_path: ../parent-tracking-database
+    - db_image: mydb
+    - db_service: db_server
+    - app_sync_path: ../parent-tracking-application
+    - app_image: myapp
+    - app_service: app_server
+    - db_data_vol: /opt/mongo/db
+    - db_configdb_vol: /opt/mongo/configdb
+    - webserver_sync_path: ../nginx-Docker-Image
+    - webserver_image: mywebserver
+    - webserver_service: webserver
+    - app_replicas: 3
+    - webserver_replicas: 5
+    - webserver_port_external: 8080
+    - webserver_port_internal: 80
+    - network_name: blog_network
+  tasks: 
+    - name: Install Prerequisites
+      apt: 
+        name: ['python-apt', 'python-pip', 'python3-pip', 'git', 'ssh'] 
+        state: present
+    - name: Install Docker
+      pip:
+        name: docker
+        state: present
+    - name: Install Docker apt Repository Key
+      apt_key:
+        url: "https://download.docker.com/linux/ubuntu/gpg"
+        state: present
+    - name: Install Docker apt Repository
+      apt_repository:
+        repo: "deb [arch=amd64] https:download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+    - name: Install Docker-ce
+      apt: 
+        name: docker-ce
+        update_cache: yes
+        state: present
+    - name: Install Node apt Repository Key
+      apt_key:
+        url: "https://deb.nodesource.com/gpgkey/nodesource.gpg.key"
+        state: present
+    - name: Install Node apt Repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://deb.nodesource.com/node_12.x bionic main"  
+        state: present
+    - name: Install Node.js
+      apt:
+        name: nodejs
+        update_cache: yes
+        state: present
+    - name: Upload the DB Docker Image
+      synchronize:
+        src: "{{db_sync_path}}"
+        dest: /opt/mydb
+    - name: Upload the Application Docker Image
+      synchronize:
+        src: "{{app_sync_path}}"
+        dest: /opt/myapp
+    - name: Upload the Webserver Docker Image
+      synchronize:
+        src: "{{webserver_sync_path}}"
+        dest: /opt/mywebserver
+    - name: Build the DB image
+      docker_image:
+        name: "{{db_image}}"
+        path: /opt/mydb/parent-tracking-database
+    - name: Build the app image
+      docker_image:
+        name: "{{app_image}}"
+        path: /opt/myapp/parent-tracking-application
+    - name: Build the webserver image
+      docker_image:
+        name: "{{webserver_image}}"
+        path: /opt/mywebserver/nginx-Docker-Image
+    - name: Create the Docker Swarm
+      docker_swarm:
+        state: present
+        advertise_addr: 172.28.128.17
+    - name: Create the Swarm network
+      docker_network:
+        name: "{{network_name}}"
+        driver: overlay
+    - name: Create the necessary paths for the DB volumes
+      file: path="{{item}}" state=directory recurse=yes
+      with_items:
+        - "{{db_data_vol}}"
+        - "{{db_configdb_vol}}"
+    - name: Create the DB Service
+      docker_swarm_service:
+        name: "{{db_service}}"
+        networks: "{{network_name}}"
+        mounts:
+          - type: bind
+            source: "{{db_data_vol}}"
+            target: /data/db
+          - type: bind
+            source: "{{db_configdb_vol}}"
+            target: /data/configdb
+        image: "{{db_image}}"
+        replicas: 1
+        restart_config:
+          condition: on-failure
+    - name: Create the APP Service
+      docker_swarm_service:
+        name: "{{app_service}}"
+        networks: "{{network_name}}"
+        image: "{{app_image}}"
+        replicas: "{{app_replicas}}"
+        restart_config:
+          condition: on-failure
+    - name: Create the webserver Service
+      docker_swarm_service:
+        name: "{{webserver_service}}"
+        networks: "{{network_name}}"
+        image: "{{webserver_image}}"
+        replicas: "{{webserver_replicas}}"
+        restart_config:
+          condition: on-failure
+        publish:
+          - published_port: "{{webserver_port_external}}"
+            target_port: "{{webserver_port_internal}}"
+        mounts:
+          - type: bind
+            source: /home/vagrant/GitHub/class-blog-site/etc/nginx/conf.d
+            target: /etc/nginx/conf.d
+          - type: bind
+            source: /home/vagrant/GitHub/class-blog-site/usr/share/www/html
+            target: /usr/share/www/html
