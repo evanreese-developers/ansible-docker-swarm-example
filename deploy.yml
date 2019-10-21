@@ -1,5 +1,6 @@
 ---
 - hosts: all
+  remote_user: vagrant
   become: true
   vars:
     - swarm_address: DockerHost #You must configure the ip of the host in /etc/hosts prior to using this file
@@ -54,7 +55,7 @@
         name: nodejs
         update_cache: yes
         state: present
-    - name: Upload the DB Docker Image (Issue Here)
+    - name: Upload the DB Docker Image
       synchronize:
         src: "{{db_sync_path}}"
         dest: /opt/mydb
@@ -77,7 +78,7 @@
     - name: Build the webserver image
       docker_image:
         name: "{{webserver_image}}"
-        path: /opt/mywebserver
+        path: /opt/mywebserver/nginx-Docker-Image
     - name: Create the Docker Swarm
       docker_swarm:
         state: present
@@ -127,8 +128,8 @@
             target_port: "{{webserver_port_internal}}"
         mounts:
           - type: bind
-            source: /home/vagrant/web-dev-course/etc/nginx/conf.d
+            source: /home/vagrant/GitHub/class-blog-site/etc/nginx/conf.d
             target: /etc/nginx/conf.d
           - type: bind
-            source: /home/vagrant/web-dev-course/usr/share/www/html
+            source: /home/vagrant/GitHub/class-blog-site/usr/share/www/html
             target: /usr/share/www/html
